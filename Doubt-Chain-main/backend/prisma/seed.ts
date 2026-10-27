@@ -93,7 +93,77 @@ async function main() {
     })
   }
 
+  // Seed a few community answers + resolved threads so the FAQ archive, RAG
+  // retrieval and semantic search have real data to work with in development.
+  const demoAnswers: Array<{ title: string; answer: string; resolve: boolean }> = [
+    {
+      title: 'Circular queue implementation using arrays',
+      answer:
+        'Keep a separate count variable. rear = (rear + 1) % size on enqueue and front = (front + 1) % size on dequeue; the queue is full when count == size, not when rear + 1 == front.',
+      resolve: true
+    },
+    {
+      title: 'Difference between stack and queue',
+      answer:
+        'A stack is LIFO (push/pop at one end) and a queue is FIFO (enqueue at rear, dequeue at front). Use a stack for undo/recursion, a queue for scheduling and BFS.',
+      resolve: true
+    },
+    {
+      title: 'Process vs thread',
+      answer:
+        'Processes have separate address spaces; threads share the address space of their process, so threads are cheaper to create but need synchronisation.',
+      resolve: true
+    },
+    {
+      title: 'Normalization up to 3NF',
+      answer:
+        '1NF removes repeating groups, 2NF removes partial dependencies on part of a composite key, 3NF removes transitive dependencies on non-key attributes.',
+      resolve: true
+    },
+    {
+      title: 'Recursion base case importance',
+      answer:
+        'Without a base case the recursive calls never stop and each call consumes a stack frame, ending in a stack overflow.',
+      resolve: false
+    }
+  ]
+
+  for (const entry of demoAnswers) {
+    const doubt = await prisma.doubt.findFirst({
+      where: { title: entry.title, authorId: demoUser.id }
+    })
+    if (!doubt) continue
+    const existingAnswer = await prisma.answer.findFirst({ where: { doubtId: doubt.id } })
+    if (!existingAnswer) {
+      await prisma.answer.create({
+        data: { doubtId: doubt.id, authorId: demoUser.id, content: entry.answer }
+      })
+    }
+    if (entry.resolve && !doubt.isResolved) {
+      await prisma.doubt.update({
+        where: { id: doubt.id },
+        data: { isResolved: true, resolvedAt: new Date() }
+      })
+    }
+  }
+
   console.log('Seed completed')
+
+  // Optional: populate the vector index so semantic search / RAG work right
+  // after seeding. Skipped silently when no embedding provider is configured.
+  if (process.env.EMBEDDING_API_KEY) {
+    try {
+      const { indexPendingDoubts } = await import('../src/services/search/embeddingIndex.js')
+      const result = await indexPendingDoubts({ limit: 60 })
+      console.log(
+        `Embeddings: ${result.indexed} indexed, ${result.skipped} skipped, ${result.failed} failed, ${result.remaining} remaining`
+      )
+    } catch (error) {
+      console.warn('Embedding backfill skipped:', error instanceof Error ? error.message : error)
+    }
+  } else {
+    console.log('Embeddings: skipped (set EMBEDDING_API_KEY, then run `npm run embeddings:backfill`)')
+  }
 }
 
 main()

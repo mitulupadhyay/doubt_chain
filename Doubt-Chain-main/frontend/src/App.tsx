@@ -4,6 +4,7 @@ import SearchBeforePost from './pages/SearchBeforePost'
 import Discussions from './pages/Discussions'
 import DoubtDetail from './pages/DoubtDetail'
 import FAQ from './pages/FAQ'
+import AiAssistant from './pages/AiAssistant'
 import NewDoubt from './pages/NewDoubt'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -18,6 +19,7 @@ function App() {
       <Route path="/doubts/:id" element={<DoubtDetail />} />
       <Route path="/doubts/new" element={<NewDoubt />} />
       <Route path="/faq" element={<FAQ />} />
+      <Route path="/assistant" element={<AiAssistant />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="*" element={<NotFound />} />

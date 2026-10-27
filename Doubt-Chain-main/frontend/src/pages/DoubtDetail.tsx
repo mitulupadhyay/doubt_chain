@@ -4,8 +4,12 @@ import AppShell from '../layouts/AppShell'
 import StatusBadge from '../components/StatusBadge'
 import LoadingState from '../components/LoadingState'
 import ErrorState from '../components/ErrorState'
+import AiAnswerCard from '../components/AiAnswerCard'
+import ExplanationModeSelector from '../components/ExplanationModeSelector'
 import { doubtService } from '../services/doubtService'
-import { Doubt, Answer } from '../types/api'
+import { aiService } from '../services/aiService'
+import { Doubt, Answer, AiAnswer, ExplanationMode, ExplanationModeInfo } from '../types/api'
+import { DEFAULT_MODE, FALLBACK_MODES } from '../lib/aiModes'
 import { useAuth } from '../context/AuthContext'
 
 function formatDate(iso: string) {
@@ -23,6 +27,12 @@ export default function DoubtDetail() {
   const [submitting, setSubmitting] = useState(false)
   const [answerError, setAnswerError] = useState<string | null>(null)
   const [upvoteLoading, setUpvoteLoading] = useState<string | null>(null)
+  const [aiModes, setAiModes] = useState<ExplanationModeInfo[]>(FALLBACK_MODES)
+  const [aiMode, setAiMode] = useState<ExplanationMode>(DEFAULT_MODE)
+  const [aiAnswer, setAiAnswer] = useState<AiAnswer | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiConfigured, setAiConfigured] = useState<boolean | null>(null)
 
   const load = async () => {
     if (!id) return
@@ -40,6 +50,40 @@ export default function DoubtDetail() {
   }
 
   useEffect(() => { load() }, [id])
+
+  useEffect(() => {
+    let active = true
+    aiService
+      .getConfig()
+      .then((config) => {
+        if (!active) return
+        if (config.modes?.length) setAiModes(config.modes)
+        if (config.defaultMode) setAiMode(config.defaultMode)
+        setAiConfigured(config.assistantConfigured)
+      })
+      .catch(() => {
+        if (active) setAiConfigured(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const askAi = async () => {
+    if (!id) return
+    setAiLoading(true)
+    setAiError(null)
+    try {
+      const result = await aiService.askAboutDoubt(id, { mode: aiMode })
+      setAiAnswer(result)
+    } catch (err) {
+      const typed = err as Error & { status?: number; details?: { code?: string } }
+      setAiError(typed.message)
+      setAiAnswer(null)
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   const submitAnswer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -137,6 +181,78 @@ export default function DoubtDetail() {
                 )}
               </footer>
             </article>
+
+            {/* AI assistant panel */}
+            <section className="dc-card space-y-4 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-semibold text-dc-text">Ask the AI assistant</h2>
+                  <p className="mt-0.5 text-xs text-dc-subtext">
+                    Grounded in Doubt-Chain discussions. AI answers are labelled and never marked as
+                    verified.
+                  </p>
+                </div>
+                <span className="rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-0.5 text-[11px] text-violet-300">
+                  AI-generated
+                </span>
+              </div>
+
+              <ExplanationModeSelector
+                modes={aiModes}
+                value={aiMode}
+                onChange={setAiMode}
+                disabled={aiLoading}
+                compact
+              />
+
+              {user ? (
+                <button
+                  type="button"
+                  onClick={askAi}
+                  disabled={aiLoading || aiConfigured === false}
+                  className="dc-btn-primary text-sm"
+                >
+                  {aiLoading ? (
+                    <>
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      Generating…
+                    </>
+                  ) : aiAnswer ? (
+                    'Regenerate explanation'
+                  ) : (
+                    'Explain this doubt with AI'
+                  )}
+                </button>
+              ) : (
+                <p className="text-sm text-dc-subtext">
+                  <Link to="/login" className="text-dc-blue hover:underline underline-offset-2">
+                    Sign in
+                  </Link>{' '}
+                  to ask the AI assistant about this doubt.
+                </p>
+              )}
+
+              {aiConfigured === false && (
+                <p className="rounded-lg border border-amber-400/25 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">
+                  The AI assistant is not configured on this server yet. Semantic search still works.
+                </p>
+              )}
+
+              {aiError && <ErrorState message={aiError} />}
+
+              {aiLoading && !aiAnswer && (
+                <div className="space-y-2" role="status" aria-live="polite">
+                  <div className="dc-skeleton h-3 w-full" />
+                  <div className="dc-skeleton h-3 w-5/6" />
+                  <div className="dc-skeleton h-3 w-2/3" />
+                </div>
+              )}
+
+              {aiAnswer && <AiAnswerCard answer={aiAnswer} onRegenerate={user ? askAi : undefined} regenerating={aiLoading} />}
+            </section>
 
             {/* Answers */}
             <section>

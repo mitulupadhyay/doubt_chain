@@ -5,13 +5,15 @@ import ProtectedRoute from '../components/ProtectedRoute'
 import ErrorState from '../components/ErrorState'
 import StatusBadge from '../components/StatusBadge'
 import { doubtService } from '../services/doubtService'
-import { Subject, Doubt } from '../types/api'
+import { Subject, SearchResultDoubt } from '../types/api'
 
 function NewDoubtForm() {
   const navigate = useNavigate()
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [form, setForm] = useState({ title: '', content: '', subjectId: '' })
-  const [matches, setMatches] = useState<Doubt[]>([])
+  const [matches, setMatches] = useState<SearchResultDoubt[]>([])
+  const [strongMatch, setStrongMatch] = useState(false)
+  const [matchNotice, setMatchNotice] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searching, setSearching] = useState(false)
@@ -21,20 +23,46 @@ function NewDoubtForm() {
     doubtService.listSubjects().then(setSubjects).catch(() => setSubjects([]))
   }, [])
 
-  // Debounced search interceptor
+  // Debounced similar-question suggestions (semantic + keyword hybrid).
+  // Advisory only: failures or empty results never block posting.
   useEffect(() => {
-    if (!form.title.trim()) { setMatches([]); return }
+    const draft = `${form.title} ${form.content.slice(0, 240)}`.trim()
+    if (draft.length < 12) {
+      setMatches([])
+      setStrongMatch(false)
+      setMatchNotice(null)
+      setSearching(false)
+      return
+    }
+
     let active = true
     setSearching(true)
     const t = setTimeout(() => {
       doubtService
-        .searchDoubts(form.title.trim())
-        .then(res => { if (active) setMatches(res.items.slice(0, 5)) })
-        .catch(() => { if (active) setMatches([]) })
+        .findSimilar(draft, { subjectId: form.subjectId || undefined, limit: 5 })
+        .then(res => {
+          if (!active) return
+          setMatches(res.items)
+          setStrongMatch(res.hasStrongMatch)
+          setMatchNotice(
+            res.degraded
+              ? 'Similarity check is running in keyword mode right now, so matches may be less precise.'
+              : res.items.length === 0
+                ? 'No similar discussion found — your question looks new.'
+                : null
+          )
+        })
+        .catch(() => {
+          if (active) {
+            setMatches([])
+            setStrongMatch(false)
+            setMatchNotice(null)
+          }
+        })
         .finally(() => { if (active) setSearching(false) })
-    }, 300)
+    }, 500)
     return () => { active = false; clearTimeout(t) }
-  }, [form.title])
+  }, [form.title, form.content, form.subjectId])
 
   const validate = () => {
     const errs: typeof fieldErrors = {}
@@ -115,11 +143,13 @@ function NewDoubtForm() {
             </div>
             {fieldErrors.title && <p role="alert" className="mt-1.5 text-xs text-rose-400">{fieldErrors.title}</p>}
 
-            {/* Similar doubts interceptor */}
+            {/* Similar doubts interceptor — advisory, never blocks submission */}
             {matches.length > 0 && (
               <div className="mt-2 rounded-lg border border-amber-400/20 bg-amber-500/5 p-3 space-y-2">
                 <p className="text-xs font-medium text-amber-300">
-                  Similar doubts found — check if your question is already answered:
+                  {strongMatch
+                    ? 'An existing discussion looks very close to your question — check it before posting:'
+                    : 'Similar discussions found — check if your question is already answered:'}
                 </p>
                 {matches.map(m => (
                   <Link
@@ -129,11 +159,22 @@ function NewDoubtForm() {
                     rel="noopener noreferrer"
                     className="flex items-center justify-between gap-3 rounded border border-dc-border p-2 hover:border-dc-blue/40"
                   >
-                    <span className="truncate text-xs text-dc-text">{m.title}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs text-dc-text">{m.title}</span>
+                      <span className="text-[10px] text-dc-subtext">
+                        {m.subject?.name} · {Math.round(m.score * 100)}% match · {m.matchType}
+                      </span>
+                    </span>
                     <StatusBadge status={m.isResolved ? 'resolved' : 'unresolved'} />
                   </Link>
                 ))}
+                <p className="text-[10px] text-amber-200/70">
+                  None of these? Go ahead and post — nothing is blocked.
+                </p>
               </div>
+            )}
+            {matchNotice && (
+              <p className="mt-2 text-[11px] text-dc-subtext">{matchNotice}</p>
             )}
           </div>
 

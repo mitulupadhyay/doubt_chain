@@ -2,12 +2,16 @@
 // Designed from PRD: User, Subject, Doubt, Answer, upvote representation
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // pgvector powers semantic search / RAG retrieval (see Docs/11-ai-implementation.md).
+  // The extension is created by migration 20261027120000_pgvector_extension.
+  extensions = [vector]
 }
 
 enum Profession {
@@ -28,9 +32,10 @@ model User {
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 
-  doubts   Doubt[]
-  answers  Answer[]
-  upvotes  AnswerUpvote[]
+  doubts         Doubt[]
+  answers        Answer[]
+  upvotes        AnswerUpvote[]
+  aiInteractions AiInteraction[]
 
   @@index([profession])
 }
@@ -63,7 +68,8 @@ model Doubt {
   subjectId String
   subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
 
-  answers Answer[]
+  answers   Answer[]
+  embedding DoubtEmbedding?
 
   @@index([subjectId, isResolved, createdAt])
   @@index([authorId])
@@ -106,4 +112,49 @@ model AnswerUpvote {
 enum MediaType {
   IMAGE
   AUDIO
+}
+
+/// Vector index row for semantic search / RAG retrieval.
+///
+/// `embedding` is a pgvector column managed through raw SQL (Prisma models
+/// `vector` as an Unsupported type). 1536 dimensions matches OpenAI
+/// text-embedding-3-small; other providers are padded/trimmed to fit.
+/// Rows are created/updated by the embedding indexer and are safe to delete:
+/// the index can always be rebuilt from the Doubt table.
+model DoubtEmbedding {
+  id          String                     @id @default(cuid())
+  doubtId     String                     @unique
+  doubt       Doubt                      @relation(fields: [doubtId], references: [id], onDelete: Cascade)
+  provider    String
+  model       String
+  dimensions  Int
+  contentHash String
+  embedding   Unsupported("vector(1536)")?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  @@index([model])
+  @@index([provider])
+}
+
+/// Audit trail of AI assistant calls (prompt is stored, secrets never are).
+model AiInteraction {
+  id        String   @id @default(cuid())
+  mode      String
+  question  String
+  answer    String
+  grounded  Boolean  @default(false)
+  provider  String?
+  model     String?
+  latencyMs Int?
+  sources   Json?
+  createdAt DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  doubtId String?
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }

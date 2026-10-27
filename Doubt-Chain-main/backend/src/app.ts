@@ -9,6 +9,8 @@ import subjectsRouter from './routes/subjects.js'
 import doubtsRouter from './routes/doubts.js'
 import answersRouter from './routes/answers.js'
 import faqRouter from './routes/faq.js'
+import searchRouter from './routes/search.js'
+import aiRouter from './routes/ai.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { env } from './config/env.js'
 
@@ -29,7 +31,7 @@ app.use(
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100
+    max: env.GLOBAL_RATE_LIMIT_MAX
   })
 )
 app.use(express.json({ limit: '1mb' }))
@@ -46,6 +48,8 @@ app.use('/api/v1/subjects', subjectsRouter)
 app.use('/api/v1/doubts', doubtsRouter)
 app.use('/api/v1/answers', answersRouter)
 app.use('/api/v1/faq', faqRouter)
+app.use('/api/v1/search', searchRouter)
+app.use('/api/v1/ai', aiRouter)
 
 app.use(errorHandler)
 

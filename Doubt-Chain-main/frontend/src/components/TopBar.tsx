@@ -6,6 +6,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/search':    'Search Before Posting',
   '/doubts':    'Discussions',
   '/faq':       'FAQ Archive',
+  '/assistant': 'AI Doubt Assistant',
   '/doubts/new':'New Doubt',
 }
 

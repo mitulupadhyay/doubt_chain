@@ -5,6 +5,15 @@
 **Document ID:** 09-implementation-roadmap.md  
 **Version:** 1.0 — 2026-10-27  
 **Status:** Design Proposal (pre-implementation)  
+**Implementation status (Phase 4, 2026-10-27):** the P1 semantic-search and RAG
+differentiators and the P2 multilingual retrieval items are implemented in this
+repository — pgvector embeddings, hybrid semantic search, similar-question
+suggestions, the RAG AI assistant with five explanation modes and validated
+citations, plus English/Hindi/Hinglish query expansion. See
+[11-ai-implementation.md](11-ai-implementation.md) for endpoints, configuration,
+migrations, evaluation results and remaining blockers. AI answer *evaluation*
+(scoring peer answers) remains out of scope.
+
 **Companion docs:** [07-system-architecture.md](07-system-architecture.md) · [08-technical-design.md](08-technical-design.md) · [10-testing-and-validation.md](10-testing-and-validation.md)
 
 ---

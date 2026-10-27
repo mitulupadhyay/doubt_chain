@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma.js'
 import { HttpError } from '../middleware/errorHandler.js'
+import { scheduleDoubtIndexing } from './search/embeddingIndex.js'
 
 type ListFilters = {
   subjectId?: string
@@ -20,7 +21,7 @@ export async function createDoubt(input: {
   if (!subject) {
     throw new HttpError(400, 'Invalid subject')
   }
-  return prisma.doubt.create({
+  const doubt = await prisma.doubt.create({
     data: {
       title: input.title,
       content: input.content,
@@ -35,6 +36,11 @@ export async function createDoubt(input: {
       _count: { select: { answers: true } }
     }
   })
+
+  // Best-effort vector indexing: never blocks or fails doubt creation.
+  scheduleDoubtIndexing(doubt.id)
+
+  return doubt
 }
 
 export async function listDoubts(filters: ListFilters) {
@@ -94,7 +100,7 @@ export async function updateDoubt(id: string, userId: string, data: any) {
     throw new HttpError(403, 'Forbidden')
   }
   const { isResolved, resolvedAt, authorId, subjectId, ...safe } = data
-  return prisma.doubt.update({
+  const updated = await prisma.doubt.update({
     where: { id },
     data: safe,
     include: {
@@ -102,6 +108,8 @@ export async function updateDoubt(id: string, userId: string, data: any) {
       subject: { select: { id: true, name: true, code: true } }
     }
   })
+  scheduleDoubtIndexing(updated.id)
+  return updated
 }
 
 export async function resolveDoubt(id: string, userId: string) {
@@ -121,7 +129,7 @@ export async function resolveDoubt(id: string, userId: string) {
       }
     })
   }
-  return prisma.doubt.update({
+  const resolved = await prisma.doubt.update({
     where: { id },
     data: {
       isResolved: true,
@@ -132,6 +140,10 @@ export async function resolveDoubt(id: string, userId: string) {
       subject: { select: { id: true, name: true, code: true } }
     }
   })
+
+  // Resolved doubts become the knowledge base that RAG answers cite.
+  scheduleDoubtIndexing(resolved.id)
+  return resolved
 }
 
 export async function searchDoubts(input: { q: string; subjectId?: string; page?: number; limit?: number }) {

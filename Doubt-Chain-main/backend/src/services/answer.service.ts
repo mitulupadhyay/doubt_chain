@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma.js'
 import { HttpError } from '../middleware/errorHandler.js'
+import { scheduleDoubtIndexing } from './search/embeddingIndex.js'
 
 export async function createAnswer(input: {
   doubtId: string
@@ -12,7 +13,7 @@ export async function createAnswer(input: {
   if (!doubt) {
     throw new HttpError(404, 'Doubt not found')
   }
-  return prisma.answer.create({
+  const answer = await prisma.answer.create({
     data: {
       doubtId: input.doubtId,
       authorId: input.authorId,
@@ -25,6 +26,11 @@ export async function createAnswer(input: {
       _count: { select: { upvotes: true } }
     }
   })
+
+  // New answer text can change what the doubt is findable by.
+  scheduleDoubtIndexing(answer.doubtId)
+
+  return answer
 }
 
 export async function listAnswers(doubtId: string) {
@@ -51,7 +57,7 @@ export async function updateAnswer(answerId: string, userId: string, data: any) 
     throw new HttpError(403, 'Forbidden')
   }
   const { authorId, doubtId, ...safe } = data
-  return prisma.answer.update({
+  const updated = await prisma.answer.update({
     where: { id: answerId },
     data: safe,
     include: {
@@ -59,6 +65,8 @@ export async function updateAnswer(answerId: string, userId: string, data: any) 
       _count: { select: { upvotes: true } }
     }
   })
+  scheduleDoubtIndexing(updated.doubtId)
+  return updated
 }
 
 export async function deleteAnswer(answerId: string, userId: string) {
